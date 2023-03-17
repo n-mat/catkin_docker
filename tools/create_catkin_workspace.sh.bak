@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+
+set -e
+
+function echoerr { echo "$@" >&2; exit 1;}
+SCRIPT_DIRECTORY="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+#SOURCE_DIRECTORY=$(realpath "${SCRIPT_DIRECTORY}/..")
+DEFAULT_CATKIN_WORKSPACE_DIRECTORY=catkin_workspace
+DEFAULT_LOCKFILE=.lock
+
+
+if [[ -z ${SOURCE_DIRECTORY+x} ]]; then
+    echoerr "ERROR: Environmental variable: SOURCE_DIRECTORY must be set."
+fi
+
+if ! [ -x "$(command -v catkin)" ]; then
+    echoerr "ERROR: catkin not installed."
+fi
+
+
+function catkin_workspace_init(){
+  
+    local source_directory="${1}"
+    local catkin_workspace_directory="${2:-${DEFAULT_CATKIN_WORKSPACE_DIRECTORY}}"
+    local lockfile="${3:-${DEFAULT_LOCKFILE}}"
+
+    if [[ ! -d "${source_directory}" ]]; then
+        echoerr "ERROR: The provided source directory: ${source_directory} does not exist."
+    fi
+    
+    cd "${source_directory}"
+    rm -rf "${catkin_workspace_directory}"
+    if [[ ! -d "${catkin_workspace_directory}" ]]; then
+        mkdir "${catkin_workspace_directory}"
+        touch "${catkin_workspace_directory}/${lockfile}"
+        mkdir "${catkin_workspace_directory}"/{build,devel,install,logs,src}
+        mkdir -p "${catkin_workspace_directory}"/install/{lib/python3/dist-packages,share,include}
+        #ln -sf "${catkin_workspace_directory}/src" src 
+    else
+        echoerr "ERROR: The Catkin workspace directory: ${source_directory}/${catkin_workspace_directory} already exists."
+    fi
+    printf "catkin_workspace_directory: %s\n" "${source_directory}/${catkin_workspace_directory}"
+    cd "${source_directory}/${catkin_workspace_directory}"
+
+    source /opt/ros/noetic/setup.bash
+    catkin config --init --install --extend /opt/ros/noetic/ --workspace "${source_directory}/${catkin_workspace_directory}"
+    catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release -DXSD_INCLUDE_DIR=include -DCMAKE_PREFIX_PATH=/opt/ros/noetic
+    cd "${source_directory}/${catkin_workspace_directory}/src"
+    catkin_create_pkg catkin_workspace_init
+
+    catkin build catkin_workspace_init
+    rm -rf src/catkin_workspace_init
+    if [ -L "${source_directory}/src" ]; then 
+        rm "${source_directory}/src"; 
+    fi
+    printf "The Catkin workspace directory can be found at: %s \n" "${source_directory}/${catkin_workspace_directory}"
+}
+
+function silent(){
+    "$@" 2>/dev/null || true 
+}
+
+relative_softlink(){
+    local source="${1}"
+    local destination="${2}"
+
+    if [[ -z "${source}" ]]; then
+        echoerr "ERROR: source is empty. Must provide a source."
+    fi
+
+    if [[ -z "${destination}" ]]; then
+        echoerr "ERROR: destination is empty. Must provide a destination."
+    fi
+
+    if [[ -d "${destination}" ]]; then
+        cd "${destination}"
+        local source_relative_path="$(silent realpath --relative-to=. "${source}")"
+
+        silent ln -s "${source_relative_path}" .
+    fi
+
+}
+
+function link_catkin_packages(){
+
+    local source_directory="${1}"
+    local catkin_workspace_directory="${2:-${DEFAULT_CATKIN_WORKSPACE_DIRECTORY}}"
+
+    if [[ ! -d "${source_directory}" ]]; then
+        echoerr "ERROR: The provided source directory: ${source_directory} does not exist."
+    fi
+     
+    if [[ ! -d "${source_directory}/${catkin_workspace_directory}" ]]; then
+        echoerr "ERROR: The provided catkin workspace: ${source_directory}/${catkin_workspace_directory} does not exist."
+    fi
+
+    local catkin_workspace_directory_absolute_path="${source_directory}/${catkin_workspace_directory}"
+    cd "${catkin_workspace_directory_absolute_path}"
+    while read -r line; do
+        package=$(echo "${line}" | rev | cut -d"/" -f3 | rev)
+        package_base_directory_absolute_path="$(realpath ${line%"/build/install"})"
+        package_base_directory_relative_path="$(realpath --relative-to="${source_directory}" ${line%"/build/install"})"
+        printf "  Package: %s\n" "${package}" 
+        printf "    Base Directory: %s \n" "${package_base_directory_absolute_path}"
+        if [[ -f "${package_base_directory_absolute_path}/package.xml" ]]; then
+            printf "    package.xml found: ${package_base_directory_absolute_path}/package.xml\n"
+            
+            printf "      linking source directory\n"
+            relative_softlink "${package_base_directory_absolute_path}" "${catkin_workspace_directory_absolute_path}/src"
+            
+            printf "      linking libraries\n"
+            [ -d "${package_base_directory_absolute_path}/build/install/lib/${package}" ] && \
+                relative_softlink "${package_base_directory_absolute_path}/build/install/lib/${package}" "${catkin_workspace_directory_absolute_path}/install/lib/" 
+
+            printf "      linking includes\n"
+            [ -d "${package_base_directory_absolute_path}/build/install/include/${package}" ] && \
+                relative_softlink "${package_base_directory_absolute_path}/build/install/include/${package}" "${catkin_workspace_directory_absolute_path}/install/include/" 
+
+            printf "      linking cmake files\n"
+            (
+            cd "${catkin_workspace_directory_absolute_path}/install/share"
+            source_relative_path="$(realpath --relative-to=. "${package_base_directory_absolute_path}/build/install/share")"
+            silent ln -sf "${source_relative_path}"/* .
+            )
+
+            printf "      linking package.xml\n"
+            relative_softlink "${package_base_directory_absolute_path}/package.xml" "${catkin_workspace_directory_absolute_path}/install/share/${package}/" 
+
+            printf "      linking msgs\n"
+            [ -d "${package_base_directory_absolute_path}/msg" ] && \
+                relative_softlink "${package_base_directory_absolute_path}/msg" "${catkin_workspace_directory_absolute_path}/install/share/${package}/" 
+        fi
+    done < <(find "${source_directory}" -path "**/build/install")
+
+    cd "${source_directory}/${catkin_workspace_directory}"
+    ln -sf $(find "${source_directory}" -name "**.so" -exec realpath --relative-to="${source_directory}/${catkin_workspace_directory}/install/lib" {} \;) install/lib
+
+    relative_softlink $(find "${source_directory}" -name "**.so") install/lib
+
+}
+
+
+
+catkin_workspace_init "${SOURCE_DIRECTORY}"
+link_catkin_packages "${SOURCE_DIRECTORY}"
+
+exit 1
+
+CATKIN_WORKSPACE_DIRECTORY="${DEFAULT_CATKIN_WORKSPACE_DIRECTORY}"
+if [[ ! -d "${CATKIN_WORKSPACE_DIRECTORY}" ]]; then
+    mkdir "${CATKIN_WORKSPACE_DIRECTORY}"
+    touch "${CATKIN_WORKSPACE_DIRECTORY}/${LOCKFILE}"
+    mkdir "${CATKIN_WORKSPACE_DIRECTORY}"/{build,devel,install,logs,src}
+    mkdir -p "${CATKIN_WORKSPACE_DIRECTORY}"/install/{lib/python3/dist-packages,share,include}
+ 
+    cd "${CATKIN_WORKSPACE_DIRECTORY}"
+
+    for file in "$SOURCE_DIRECTORY"/*; do
+        
+        printf "file: %s realpath: %s\n" "${file}" "$(realpath "${file}")"    
+        file="$(realpath "${file}")"
+        file "${file}"
+        if [ -d "$file" ]; then
+            #echo "processing: $file"
+            #short="${${file:0:-1}##*/}"    #extract dir name without path and trailing /
+            short="$(basename "${file}")"    #extract dir name without path and trailing /
+            #short="${file##*/}"    #extract dir name without path 
+            #echo "subfolder: $short"
+            #echo "processing: $file/$short"
+            if [[ ! "$file" =~ ${CATKIN_WORKSPACE_DIRECTORY} ]]; then 
+                if [ -d "$file/$short" ]; then  #if directory contains subdirectory of same name
+                    if [ -f "$file/$short/package.xml" ]; then #if subdirectory contanis a package.xml
+                        #then create link to subdirectory in src
+                        ln -s "$file/$short" "src/"  
+                        echo "creating link src/$short -> $file/$short"
+                        #then create link to lib
+                        if [ -d "$file/$short/build/install/lib/$short" ]; then 
+                            ln -s "$file/$short/build/install/lib/$short" "install/lib/$short"  
+                            echo "creating link install/lib/$short -> $file/$short/build/install/lib/$short"
+                        #alternatively use devel
+                        elif [ -d "$file/$short/build/devel/lib/$short" ]; then 
+                            ln -s "$file/$short/build/devel/lib/$short" "install/lib/$short"  
+                            echo "creating link install/lib/$short -> $file/$short/build/devel/lib/$short"
+                        fi
+                        #create folder install/share/package-name
+                        mkdir -p "install/share/$short"
+                        #then create link to share/cmake
+                        ln -s "$file/$short/build/install/share/$short/cmake" "install/share/$short/cmake"  
+                        echo "creating link install/share/$short/cmake -> $file/$short/build/install/share/$short/cmake"
+                        #then create link to package.xml
+                        ln -s "$file/$short/package.xml" "install/share/$short/package.xml"  
+                        echo "creating link install/share/$short/package.xml -> $file/$short/package.xml"
+                        #then create link to msg folder
+                        if [ -d "$file/$short/msg" ]; then
+                            ln -s "$file/$short/msg" "install/share/$short/msg"  
+                            echo "creating link install/share/$short/msg -> $file/$short/msg"
+                        fi
+                        #then create link to include/package-name
+                        if [ -d "$file/$short/include" ]; then
+                            ln -s "$file/$short/include/$short" "install/include/$short"  
+                            echo "creating link install/include/$short -> $file/$short/include/$short"
+                        fi
+                        #python3 content generated for ros messages
+                        if [ -d "$file/$short/build/install/lib/python3/dist-packages/$short" ]; then
+                            ln -s "$file/$short/build/install/lib/python3/dist-packages/$short" "install/lib/python3/dist-packages/$short"  
+                            echo "creating link install/lib/python3/dist-packages/$short  -> $file/$short/build/install/lib/python3/dist-packages/$short"
+                        fi
+                    fi
+                    #ln -s "$file/$short/build/install/share/$short" "install/share/$short"  
+                    #echo "creating link install/share/$short -> $file/$short/build/install/share/$short"
+                elif [ "$short" == "tools" ]; then
+                    ln -s "$file" "src/"  #create tools folder
+                    echo "creating link src/$short -> $file"
+                elif [ "$short" == "adore_if_ros_demos" ]; then
+                    ln -s "$file" "src/"  #create demos folder
+                    echo "creating link src/$short -> $file"
+                fi
+            fi 
+        fi
+    done
+    # add a link to the sumo lib, if it exists
+    if [ -f "${SOURCE_DIRECTORY}/sumo_if_ros/sumo/build/install/lib/libsumocpp.so" ]; then
+        ln -s "${SOURCE_DIRECTORY}/sumo_if_ros/sumo/build/install/lib/libsumocpp.so" "install/lib/libsumocpp.so"
+        echo "install/lib/libsumocpp.so -> ${SOURCE_DIRECTORY}/sumo_if_ros/sumo/build/install/lib/libsumocpp.so"
+    fi
+    pwd
+    exit 1
+    source /opt/ros/noetic/setup.bash
+    catkin config --init --install --extend /opt/ros/noetic/
+    catkin config --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_adore_TESTING=ON -DXSD_INCLUDE_DIR=include -DCMAKE_PREFIX_PATH=/opt/ros/noetic
+    (cd src
+    catkin_create_pkg catkin_workspace_init
+    )
+    catkin build catkin_workspace_init
+    rm -rf src/catkin_workspace_init
+else
+    echoerr "ERROR: The Catkin workspace directory: ${CATKIN_WORKSPACE_DIRECTORY} already exists."
+fi
+
+rm -f "${LOCKFILE}"
+printf "The Catkin workspace directory can be found at: %s \n" "$(realpath .)"
