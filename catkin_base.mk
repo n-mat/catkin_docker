@@ -91,8 +91,7 @@ build_fast_catkin_base: # Build the catkin_base docker context if it does not al
 create_catkin_workspace_docker:
 	make build_fast_catkin_base
 	mkdir -p "${SOURCE_DIRECTORY}/.log"
-	docker run -it \
-               --env SOURCE_DIRECTORY=${SOURCE_DIRECTORY} \
+	docker run --env SOURCE_DIRECTORY=${SOURCE_DIRECTORY} \
                --rm \
                --user "${UID}:${GID}" \
                --mount type=bind,source="${SOURCE_DIRECTORY}",target="${SOURCE_DIRECTORY}" \
@@ -113,7 +112,7 @@ create_catkin_workspace: ## Creates a catkin workspace at: ${CATKIN_WORKSPACE_DI
 .PHONY: initialize_catkin_workspace
 initialize_catkin_workspace: ## Creates a catkin workspace at: ${CATKIN_WORKSPACE_DIRECTORY}, only if there is not already one 
 	@if [ -f "${CATKIN_WORKSPACE_DIRECTORY}/.bread_crumb" ]; then\
-		printf "Catkin workspace already exists at: %s, skipping creation of catkin workspace.\n\n" "${CATKIN_WORKSPACE_DIRECTORY}";\
+        printf "Catkin workspace already exists at: %s, skipping creation of catkin workspace.\n\n" "${CATKIN_WORKSPACE_DIRECTORY}";\
         exit 0;\
     else\
         make create_catkin_workspace;\
