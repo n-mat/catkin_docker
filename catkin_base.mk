@@ -99,7 +99,7 @@ create_catkin_workspace_docker:
                'HOME="${SOURCE_DIRECTORY}" CATKIN_WORKSPACE_DIRECTORY="${CATKIN_WORKSPACE_DIRECTORY}" bash create_catkin_workspace.sh 2>&1' | tee -a "${SOURCE_DIRECTORY}/.log/create_catkin_workspace.log"
 
 .PHONY: create_catkin_workspace
-create_catkin_workspace: ## Creates a catkin workspace at: ${CATKIN_WORKSPACE_DIRECTORY}. Can be called within the adore-cli docker context or on the host
+create_catkin_workspace: ## Creates a catkin workspace at: ${CATKIN_WORKSPACE_DIRECTORY}. Can be called within the adore_cli docker context or on the host
 	make clean_catkin_workspace 
 	@if [ -f "/.dockerenv" ]; then\
         bash ${CATKIN_BASE_MAKEFILE_PATH}/tools/create_catkin_workspace.sh;\
