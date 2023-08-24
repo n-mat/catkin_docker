@@ -14,6 +14,7 @@ build(){
 }
 
 test(){
+    make create_catkin_workspace
     ci_common_test
 }
 
