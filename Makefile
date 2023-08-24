@@ -6,6 +6,10 @@ ROOT_DIR:=$(shell dirname "$(realpath $(firstword $(MAKEFILE_LIST)))")
 
 MAKEFLAGS += --no-print-directory
 
+SUBMODULES_PATH?=${ROOT_DIR}
+
+include ${SUBMODULES_PATH}/ci_teststand/ci_teststand.mk
+
 .EXPORT_ALL_VARIABLES:
 DOCKER_BUILDKIT?=1
 DOCKER_CONFIG?=
@@ -26,3 +30,5 @@ build:
 clean:
 	make clean_catkin_base 
 
+.PHONY: test
+test: ci_test
