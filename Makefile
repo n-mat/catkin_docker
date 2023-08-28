@@ -14,7 +14,7 @@ include ${SUBMODULES_PATH}/ci_teststand/ci_teststand.mk
 DOCKER_BUILDKIT?=1
 DOCKER_CONFIG?=
 
-SOURCE_DIRECTORY:=$(shell realpath ${ROOT_DIR})
+SOURCE_DIRECTORY?=$(shell realpath ${ROOT_DIR})
 CATKIN_WORKSPACE_DIRECTORY:=${SOURCE_DIRECTORY}/catkin_workspace
 
 
