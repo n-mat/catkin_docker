@@ -39,7 +39,12 @@ if [[ ! -d "${CATKIN_WORKSPACE_DIRECTORY}" ]]; then
     mkdir -p "${CATKIN_WORKSPACE_DIRECTORY}"/install/{lib/python3/dist-packages,share,include}
  
     cd $CATKIN_WORKSPACE_DIRECTORY
-    for file in "$SOURCE_DIRECTORY"/*; do
+    ADORE_ML_SOURCE_DIRECTORY=$(realpath "${SOURCE_DIRECTORY}/adore_ml")
+    ADORE_SCHEDULING_SOURCE_DIRECTORY=$(realpath "${SOURCE_DIRECTORY}/adore_scheduling")
+
+
+    for file in {$SOURCE_DIRECTORY,$ADORE_ML_SOURCE_DIRECTORY,$ADORE_SCHEDULING_SOURCE_DIRECTORY}/*; do
+       
         
         printf "file: %s realpath: %s\n" "${file}" "$(realpath "${file}")"    
         file="$(realpath "${file}")"
